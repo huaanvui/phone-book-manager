@@ -378,3 +378,106 @@ class GroupService:
                 group = _owned_group(db, user_id, group_id)
                 group.removeContact(_owned_contact(db, user_id, contact_id))
 
+class ImportExportService:
+    """UC18/19; only CSV and VCF, no implicit duplicate merging."""
+    MAX_IMPORT_BYTES = 20_000_000
+
+    def __init__(self, database, contact_service):
+        self.database = database
+        self.contacts = contact_service
+
+    @staticmethod
+    def _unescape_vcard(value):
+        escapes = {'n': '\n', 'N': '\n', ',': ',', ';': ';', '\\': '\\'}
+        return re.sub(r'\\([nN,;\\])', lambda match: escapes[match[1]], value)
+
+    @staticmethod
+    def _escape_vcard(value):
+        return str(value or '').replace('\\','\\\\').replace('\n','\\n').replace(';','\\;').replace(',','\\,')
+
+    def importFile(self, user_id, filepath):
+        file = Path(filepath)
+        if file.suffix.lower() not in ('.csv', '.vcf'):
+            raise AppError('File type is not supported. Use .csv or .vcf.')
+        if not file.is_file() or file.stat().st_size == 0:
+            raise AppError('File is missing or empty.')
+        if file.stat().st_size > self.MAX_IMPORT_BYTES:
+            raise AppError('File is too large (limit: 20 MB).')
+        try:
+            if file.suffix.lower() == '.csv':
+                with file.open('r', encoding='utf-8-sig', newline='') as stream:
+                    reader = csv.DictReader(stream)
+                    if not reader.fieldnames: raise AppError('CSV file has no header.')
+                    rows = [
+                        {str(key or '').strip().lower(): str(v or '').strip() for key, v in r.items()}
+                        for r in reader
+                    ]
+            else:
+                content = file.read_text(encoding='utf-8-sig')
+                unfolded = re.sub(r'\r?\n[ \t]', '', content)
+                rows, current = [], None
+                for line in unfolded.splitlines():
+                    line = line.strip('\r')
+                    if line.upper() == 'BEGIN:VCARD': current = {'phones':[], 'emails':[]}
+                    elif line.upper() == 'END:VCARD' and current is not None:
+                        rows.append({'name': current.get('name',''), 'phone': '; '.join(current['phones']),
+                                     'email': '; '.join(current['emails']), 'address':current.get('address',''),
+                                     'notes':current.get('notes','')})
+                        current = None
+                    elif current is not None and ':' in line:
+                        prop, val = line.split(':', 1)
+                        prop = prop.split(';')[0].upper()
+                        if prop == 'ADR':
+                            parts = re.findall(r'(?:\\.|[^;\\])+', val)
+                            current['address'] = ', '.join(self._unescape_vcard(part) for part in parts)
+                            continue
+                        val = self._unescape_vcard(val)
+                        if prop == 'FN': current['name'] = val
+                        elif prop == 'TEL': current['phones'].append(val)
+                        elif prop == 'EMAIL': current['emails'].append(val)
+                        elif prop == 'NOTE': current['notes'] = val
+        except (UnicodeDecodeError, csv.Error, OSError) as exc:
+            raise AppError('File is damaged or cannot be read as UTF-8 CSV/VCF.') from exc
+        if not rows:
+            raise AppError('The file has no valid contact records.')
+        imported, skipped, issues = 0, 0, []
+        for i, row in enumerate(rows, 1):
+            try:
+                self.contacts.create(user_id,
+                    name=row.get('name') or row.get('full_name') or row.get('fullname') or '',
+                    phone=row.get('phone') or row.get('phone_number') or '',
+                    email=row.get('email') or '', address=row.get('address') or '',
+                    notes=row.get('notes') or '')
+                imported += 1
+            except (AppError, ValueError, IntegrityError) as exc:
+                skipped += 1
+                if len(issues) < 12: issues.append(f'Row {i}: {str(exc)[:110]}')
+        return {'imported':imported, 'skipped':skipped, 'errors':issues}
+
+    def exportFile(self, user_id, filepath, group_id=None):
+        file = Path(filepath)
+        if file.suffix.lower() not in ('.csv', '.vcf'):
+            raise AppError('Choose a .csv or .vcf output file.')
+        rows = self.contacts.list_contacts(user_id, group_id=group_id)
+        if not rows:
+            raise AppError('No contact to export.')
+        try:
+            if file.suffix.lower() == '.csv':
+                with file.open('w', encoding='utf-8-sig', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['name','phone','email','address','notes'])
+                    for c in rows: writer.writerow([c.name,c.phone,c.email,c.address,c.notes])
+            else:
+                with file.open('w', encoding='utf-8', newline='\r\n') as f:
+                    for c in rows:
+                        lines = ['BEGIN:VCARD', 'VERSION:3.0', 'FN:' + self._escape_vcard(c.name)]
+                        for p in c.phones: lines.append('TEL:' + self._escape_vcard(p))
+                        for e in c.emails: lines.append('EMAIL:' + self._escape_vcard(e))
+                        if c.address: lines.append('ADR:;;' + self._escape_vcard(c.address) + ';;;;')
+                        if c.notes: lines.append('NOTE:' + self._escape_vcard(c.notes))
+                        lines.append('END:VCARD')
+                        f.write('\n'.join(lines) + '\n')
+        except OSError as exc:
+            raise AppError('Could not write the export file.') from exc
+        return len(rows)
+
