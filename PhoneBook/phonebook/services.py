@@ -481,3 +481,17 @@ class ImportExportService:
             raise AppError('Could not write the export file.') from exc
         return len(rows)
 
+class EmailService:
+    """UC21: open user's external mail app with receiver pre-filled."""
+    def __init__(self, contact_service):
+        self.contacts = contact_service
+
+    def send_email(self, user_id, contact_id):
+        contact = self.contacts.get(user_id, contact_id)
+        if not contact.emails:
+            raise AppError('This contact does not have an email address.')
+        url = 'mailto:' + quote(contact.emails[0], safe='@.+_-')
+        success = webbrowser.open(url)
+        if not success:
+            raise AppError('No default email application is configured on this computer.')
+        return True
