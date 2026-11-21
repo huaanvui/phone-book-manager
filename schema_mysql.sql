@@ -16,3 +16,22 @@ CREATE TABLE IF NOT EXISTS users (
 )
 
 ;
+
+CREATE TABLE IF NOT EXISTS contacts (
+	id INTEGER NOT NULL AUTO_INCREMENT, 
+	user_id INTEGER NOT NULL, 
+	name VARCHAR(180) NOT NULL, 
+	phone VARCHAR(300) NOT NULL, 
+	email VARCHAR(600) NOT NULL, 
+	address TEXT NOT NULL, 
+	avatar VARCHAR(400) NOT NULL, 
+	notes TEXT NOT NULL, 
+	is_favorite BOOL NOT NULL, 
+	is_deleted BOOL NOT NULL, 
+	deleted_at DATETIME, 
+	created_at DATETIME NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id)
+)
+
+;
