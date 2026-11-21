@@ -324,3 +324,57 @@ class ContactService:
                                      or emails & {normalize_email(e) for e in c.emails}):
                 return c
         return None
+
+class GroupService:
+    """UC14-17. The junction table supports many-to-many contact-group membership."""
+    def __init__(self, database):
+        self.database = database
+
+    def list_groups(self, user_id):
+        with self.database.session() as db:
+            return list(db.scalars(select(Group).where(Group.user_id == user_id).order_by(func.lower(Group.name))).all())
+
+    def create(self, user_id, name):
+        name = (name or '').strip()
+        if not name: raise AppError('Group name is required.')
+        if len(name) > 100: raise AppError('Group name must be shorter than 100 characters.')
+        with self.database.session() as db:
+            with db.begin():
+                if db.scalar(select(Group.id).where(Group.user_id == user_id, func.lower(Group.name) == name.lower())):
+                    raise AppError('Group name already exists.')
+                group = Group(user_id=user_id, name=name)
+                db.add(group); db.flush()
+                return group.id
+
+    def rename(self, user_id, group_id, name):
+        name = (name or '').strip()
+        if not name: raise AppError('Group name is required.')
+        if len(name) > 100: raise AppError('Group name must be shorter than 100 characters.')
+        with self.database.session() as db:
+            with db.begin():
+                group = _owned_group(db, user_id, group_id)
+                match = db.scalar(select(Group.id).where(Group.user_id == user_id,
+                    Group.id != group_id, func.lower(Group.name) == name.lower()))
+                if match: raise AppError('Group name already exists.')
+                group.rename(name)
+
+    def delete(self, user_id, group_id, confirmed=False):
+        if not confirmed: raise AppError('Deleting a group requires confirmation.')
+        with self.database.session() as db:
+            with db.begin():
+                group = _owned_group(db, user_id, group_id)
+                db.delete(group)
+
+    def add_contact(self, user_id, group_id, contact_ids):
+        with self.database.session() as db:
+            with db.begin():
+                group = _owned_group(db, user_id, group_id)
+                for cid in set(map(int, contact_ids)):
+                    group.addContact(_owned_contact(db, user_id, cid))
+
+    def remove_contact(self, user_id, group_id, contact_id):
+        with self.database.session() as db:
+            with db.begin():
+                group = _owned_group(db, user_id, group_id)
+                group.removeContact(_owned_contact(db, user_id, contact_id))
+
