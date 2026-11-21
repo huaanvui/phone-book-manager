@@ -160,3 +160,167 @@ class AuthService:
             if not valid:
                 raise AppError('Invalid or expired verification code.')
             return True
+
+class ContactService:
+    """UC05-13, UC20, UC22-24; new records belong to one owner."""
+    def __init__(self, database):
+        self.database = database
+
+    def create(self, user_id, *, name, phone='', email='', address='', avatar='', notes='', group_ids=()):
+        contact = Contact(user_id=user_id, name=(name or '').strip(), phone='; '.join(split_values(phone)),
+                          email='; '.join(split_values(email)), address=address.strip(), avatar=avatar,
+                          notes=notes.strip(), is_favorite=False, is_deleted=False)
+        errors = contact.validate()
+        if errors: raise ValidationError(errors)
+        with self.database.session() as db:
+            with db.begin():
+                for gid in set(map(int, group_ids)):
+                    contact.groups.append(_owned_group(db, user_id, gid))
+                db.add(contact)
+                db.flush()
+                return contact.id
+
+    def get(self, user_id, contact_id, trash=False):
+        with self.database.session() as db:
+            return _owned_contact(db, user_id, contact_id, deleted=trash)
+
+    def update(self, user_id, contact_id, *, name, phone='', email='', address='', avatar='', notes='', group_ids=None):
+        with self.database.session() as db:
+            with db.begin():
+                c = _owned_contact(db, user_id, contact_id)
+                old = (c.name, c.phone, c.email, c.address, c.avatar, c.notes)
+                c.name, c.phone, c.email = (name or '').strip(), '; '.join(split_values(phone)), '; '.join(split_values(email))
+                c.address, c.avatar, c.notes = address.strip(), avatar, notes.strip()
+                errors = c.validate()
+                if errors: raise ValidationError(errors)
+                if group_ids is not None:
+                    c.groups = [_owned_group(db, user_id, gid) for gid in set(map(int, group_ids))]
+                return c.id
+
+    def delete(self, user_id, contact_id, confirmed=False):
+        if not confirmed:
+            raise AppError('Deletion requires explicit confirmation (UC23).')
+        with self.database.session() as db:
+            with db.begin():
+                c = _owned_contact(db, user_id, contact_id)
+                c.moveToTrash()
+                db.add(TrashEntry(contact_id=c.id, user_id=user_id, deleted_at=c.deleted_at))
+                return True
+
+    def restore(self, user_id, contact_id):
+        with self.database.session() as db:
+            with db.begin():
+                c = _owned_contact(db, user_id, contact_id, deleted=True)
+                c.restore()
+                db.execute(sql_delete(TrashEntry).where(
+                    TrashEntry.user_id == user_id, TrashEntry.contact_id == contact_id))
+                return True
+
+    def toggle_favorite(self, user_id, contact_id):
+        with self.database.session() as db:
+            with db.begin():
+                return _owned_contact(db, user_id, contact_id).toggleFavorite()
+
+    def list_contacts(self, user_id, *, keyword='', group_id=None, favorites=False, sort='A-Z', trash=False):
+        with self.database.session() as db:
+            q = select(Contact).options(selectinload(Contact.groups)).where(
+                Contact.user_id == user_id, Contact.is_deleted == trash)
+            if group_id is not None:
+                _owned_group(db, user_id, int(group_id))
+                q = q.join(Contact.groups).where(Group.id == int(group_id))
+            if favorites:
+                q = q.where(Contact.is_favorite.is_(True))
+            if keyword and keyword.strip():
+                s = '%' + keyword.strip().lower().replace('\\','\\\\').replace('%','\\%').replace('_','\\_') + '%'
+                q = q.where(or_(func.lower(Contact.name).like(s, escape='\\'),
+                                func.lower(Contact.phone).like(s, escape='\\'),
+                                func.lower(Contact.email).like(s, escape='\\')))
+            q = q.order_by(func.lower(Contact.name).desc() if sort == 'Z-A' else func.lower(Contact.name).asc(), Contact.id)
+            return list(db.scalars(q).unique().all())
+
+    def search(self, user_id, keyword):  
+        return self.list_contacts(user_id, keyword=keyword)
+
+    def filter(self, user_id, group_id=None, favorites=False):
+        return self.list_contacts(user_id, group_id=group_id, favorites=favorites)
+
+    def sort(self, user_id, order='A-Z'):
+        return self.list_contacts(user_id, sort=order)
+
+    def findDuplicates(self, user_id):
+        """UC24: same normalized phone or email, including multi-valued merged contacts.
+
+        A union-find clusters transitive matches without merging automatically.
+        """
+        contacts = self.list_contacts(user_id)
+        ids = {c.id: c.id for c in contacts}
+        def root(x):
+            while ids[x] != x:
+                ids[x] = ids[ids[x]]
+                x = ids[x]
+            return x
+        def union(a, b):
+            a, b = root(a), root(b)
+            if a != b: ids[b] = a
+        keys = {}
+        for c in contacts:
+            for phone in c.phones:
+                norm = normalize_phone(phone)
+                if norm:
+                    key = ('phone', norm)
+                    if key in keys: union(c.id, keys[key])
+                    else: keys[key] = c.id
+            for email in c.emails:
+                norm = normalize_email(email)
+                if norm:
+                    key = ('email', norm)
+                    if key in keys: union(c.id, keys[key])
+                    else: keys[key] = c.id
+        groups = defaultdict(list)
+        for c in contacts:
+            groups[root(c.id)].append(c)
+        return [g for g in groups.values() if len(g) > 1]
+
+    def merge(self, user_id, contact_ids, *, name=None, phone=None, email=None, address=None, notes=None):
+        """UC20: preserve ALL phone/email values, group memberships and originals in D4."""
+        unique_ids = list(dict.fromkeys(int(x) for x in contact_ids))
+        if len(unique_ids) < 2:
+            raise AppError('Select two or more contacts to merge.')
+        with self.database.session() as db:
+            with db.begin():
+                existing = [_owned_contact(db, user_id, cid) for cid in unique_ids]
+                def join_unique(values):
+                    found, seen = [], set()
+                    for x in values:
+                        key = x.casefold()
+                        if key not in seen: seen.add(key); found.append(x)
+                    return '; '.join(found)
+                phones = join_unique(p for c in existing for p in c.phones)
+                emails = join_unique(e for c in existing for e in c.emails)
+                group_map = {g.id: g for c in existing for g in c.groups}
+                merged = Contact(user_id=user_id, name=(name if name is not None else existing[0].name).strip(),
+                                 phone=phones if phone is None else '; '.join(split_values(phone)),
+                                 email=emails if email is None else '; '.join(split_values(email)),
+                                 address=address if address is not None else next((c.address for c in existing if c.address), ''),
+                                 notes=notes if notes is not None else '\n'.join(dict.fromkeys(c.notes for c in existing if c.notes)),
+                                 avatar=next((c.avatar for c in existing if c.avatar), ''),
+                                 is_favorite=any(c.is_favorite for c in existing))
+                errors = merged.validate()
+                if errors: raise ValidationError(errors)
+                merged.groups.extend(group_map.values())
+                db.add(merged)
+                db.flush()
+                for c in existing:
+                    c.moveToTrash()
+                    db.add(TrashEntry(contact_id=c.id, user_id=user_id, deleted_at=c.deleted_at))
+                return merged.id
+
+    def duplicate_of(self, user_id, phone='', email='', exclude_id=None):
+        phones = {normalize_phone(p) for p in split_values(phone)} - {''}
+        emails = {normalize_email(e) for e in split_values(email)} - {''}
+        if not phones and not emails: return None
+        for c in self.list_contacts(user_id):
+            if c.id != exclude_id and (phones & {normalize_phone(p) for p in c.phones}
+                                     or emails & {normalize_email(e) for e in c.emails}):
+                return c
+        return None
