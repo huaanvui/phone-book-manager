@@ -26,3 +26,9 @@ def needs_rehash(encoded: str) -> bool:
         rounds = int(encoded.split('$', 3)[1])
     except (IndexError, ValueError, AttributeError):
         return True
+return rounds < PBKDF2_ROUNDS
+def new_token() -> str:
+    return secrets.token_urlsafe(32)
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+def new_reset_code() -> str:
