@@ -15,3 +15,20 @@ class Database:
             def sqlite_fk(conn, rec):
                 conn.execute('PRAGMA foreign_keys=ON')
         self.SessionLocal = sessionmaker(self.engine, expire_on_commit=False)
+
+
+    def initialize(self):
+        Base.metadata.create_all(self.engine)
+        with self.engine.begin() as connection:
+            schema = inspect(connection)
+            if 'username' not in {column['name'] for column in schema.get_columns('users')}:
+                connection.exec_driver_sql('ALTER TABLE users ADD COLUMN username VARCHAR(254)')
+            if 'ix_users_username' not in {index['name'] for index in schema.get_indexes('users')}:
+                connection.exec_driver_sql('CREATE UNIQUE INDEX ix_users_username ON users (username)')
+            connection.exec_driver_sql('UPDATE users SET username = email WHERE username IS NULL')
+
+    def session(self):
+        return self.SessionLocal()
+
+    def dispose(self):
+        self.engine.dispose()
