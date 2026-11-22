@@ -48,12 +48,18 @@ class AuthService:
         self.database = database
         self.mailer = mailer or SMTPMailer()
 
-    def register(self, full_name, email, password, confirm_password, phone_number=''):
+    def register(self, full_name, email, password, confirm_password, phone_number='', *, username=None):
         email = normalize_email(email)
         errors = {}
         if not full_name or not full_name.strip(): errors['Name'] = 'Full name is required.'
         if not is_valid_email(email): errors['Email'] = 'Enter a valid email address.'
-        if len(password) < 8: errors['Password'] = 'Password must have at least 8 characters.'
+        if username is not None:
+            username = username.strip().lower()
+            if not re.fullmatch(r'[a-z0-9_.-]{3,50}', username):
+                errors['Username'] = 'Use 3 to 50 letters, digits, dots, underscores or hyphens.'
+        minimum = 8 if username is None else 6
+        if len(password) < minimum:
+            errors['Password'] = f'Password must have at least {minimum} characters.'
         if password != confirm_password: errors['Confirm password'] = 'Passwords do not match.'
         if phone_number and not re.fullmatch(r'[\d +\-]{3,40}', phone_number):
             errors['Phone'] = 'Enter a valid phone number.'
@@ -62,20 +68,27 @@ class AuthService:
             with db.begin():
                 if db.scalar(select(User.id).where(User.email == email)):
                     raise AppError('Email is already registered.')
-                user = User(full_name=full_name.strip(), email=email, phone_number=phone_number.strip(),
-                            password_hash=hash_password(password))
+                if username is not None and db.scalar(select(User.id).where(User.username == username)):
+                    raise AppError('Username is already registered.')
+                user = User(full_name=full_name.strip(), email=email, username=username or email,
+                            phone_number=phone_number.strip(), password_hash=hash_password(password))
                 db.add(user)
-                db.flush()
+                try:
+                    db.flush()
+                except IntegrityError as exc:
+                    raise AppError('Email or username is already registered.') from exc
                 return user.id
 
-    def login(self, email, password):
-        if not email or not password:
+    def login(self, identifier, password, *, by_username=False):
+        error = 'Incorrect username or password.' if by_username else 'Email or password is incorrect.'
+        if not identifier or not password:
             raise AppError('Please fill in all fields.')
         with self.database.session() as db:
             with db.begin():
-                user = db.scalar(select(User).where(User.email == normalize_email(email)))
+                field = User.username if by_username else User.email
+                user = db.scalar(select(User).where(field == identifier.strip().lower()))
                 if not user:
-                    raise AppError('Email or password is incorrect.')
+                    raise AppError(error)
                 now = utcnow()
                 if user.locked_until and user.locked_until > now:
                     raise AppError('Too many attempts. Try again later.')
@@ -84,7 +97,7 @@ class AuthService:
                     if user.failed_logins >= 5:
                         user.locked_until = now + timedelta(minutes=15)
                         user.failed_logins = 0
-                    raise_message = 'Email or password is incorrect.'
+                    raise_message = error
                 else:
                     raise_message = None
                 if raise_message is None:
@@ -122,7 +135,7 @@ class AuthService:
             with db.begin():
                 user = db.scalar(select(User).where(User.email == email))
                 if not user:
-                    return 
+                    return
                 code = f'{secrets.randbelow(100_000_000):08d}'
                 salt = secrets.token_bytes(16)
                 digest = hashlib.pbkdf2_hmac('sha256', code.encode(), salt, 100_000).hex()
