@@ -17,3 +17,7 @@ def verify_password(password: str, encoded: str) -> bool:
         algo, rounds, salt, digest = encoded.split('$', 3)
         if algo != 'pbkdf2_sha256' or int(rounds) > 1_000_000:
             return False
+            result = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(salt), int(rounds))
+        return hmac.compare_digest(result, bytes.fromhex(digest))
+    except (TypeError, ValueError, AttributeError):
+        return False
