@@ -32,3 +32,9 @@ def new_token() -> str:
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 def new_reset_code() -> str:
+return '%06d' % secrets.randbelow(1_000_000)
+def reset_code_expiry():
+    return utcnow() + timedelta(minutes=RESET_CODE_MINUTES)
+def session_expiry():
+    return utcnow() + timedelta(days=SESSION_DAYS)
+def is_expired(moment) -> bool:
