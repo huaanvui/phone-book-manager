@@ -1,0 +1,5 @@
+name,phone,email,address,notes
+Nguyễn Văn An,0901234567,an@example.com,"Quận 1, TP.HCM",Family
+Trần Thị Bình,0912345678,binh@example.com,"Gò Vấp, TP.HCM",Work
+Nguyễn Văn An (duplicate),0901234567,an.alt@example.com,"Quận 1, TP.HCM",Same phone as Nguyễn Văn An
+Lê Văn Cường,0987654321,cuong@example.com,"Bình Thạnh, TP.HCM",School
