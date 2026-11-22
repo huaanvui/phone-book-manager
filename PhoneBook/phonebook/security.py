@@ -38,3 +38,9 @@ def reset_code_expiry():
 def session_expiry():
     return utcnow() + timedelta(days=SESSION_DAYS)
 def is_expired(moment) -> bool:
+return moment is None or moment <= utcnow()
+def password_errors(password: str) -> list:
+    errors = []
+    if len(password) < MIN_PASSWORD_LENGTH:
+        errors.append('Password must be at least %d characters' % MIN_PASSWORD_LENGTH)
+    if len(password) > MAX_PASSWORD_LENGTH:
