@@ -35,3 +35,14 @@ CREATE TABLE IF NOT EXISTS contacts (
 )
 
 ;
+
+CREATE TABLE IF NOT EXISTS `groups` (
+	id INTEGER NOT NULL AUTO_INCREMENT, 
+	user_id INTEGER NOT NULL, 
+	name VARCHAR(100) NOT NULL, 
+	PRIMARY KEY (id), 
+	CONSTRAINT uq_user_group_name UNIQUE (user_id, name), 
+	FOREIGN KEY(user_id) REFERENCES users (id)
+)
+
+;
