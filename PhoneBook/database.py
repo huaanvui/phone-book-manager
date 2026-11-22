@@ -32,3 +32,11 @@ class Database:
 
     def dispose(self):
         self.engine.dispose()
+
+def get_database_url(demo=False):
+    if demo:
+        folder = Path.home() / '.phonebook_management'
+        folder.mkdir(parents=True, exist_ok=True)
+        return 'sqlite:///' + str(folder / 'demo.db').replace('\\', '/')
+    return os.environ.get('DB_URL', 'mysql+mysqlconnector://root:password@localhost:3306/phone_book_db?charset=utf8mb4')
+
