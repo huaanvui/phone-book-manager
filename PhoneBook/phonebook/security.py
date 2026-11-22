@@ -12,3 +12,8 @@ def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, PBKDF2_ROUNDS)
     return 'pbkdf2_sha256$%d$%s$%s' % (PBKDF2_ROUNDS, salt.hex(), digest.hex())
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algo, rounds, salt, digest = encoded.split('$', 3)
+        if algo != 'pbkdf2_sha256' or int(rounds) > 1_000_000:
+            return False
