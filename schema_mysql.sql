@@ -46,3 +46,20 @@ CREATE TABLE IF NOT EXISTS `groups` (
 )
 
 ;
+
+CREATE TABLE IF NOT EXISTS password_resets (
+	id INTEGER NOT NULL AUTO_INCREMENT, 
+	user_id INTEGER NOT NULL, 
+	code_hash VARCHAR(64) NOT NULL, 
+	salt VARCHAR(32) NOT NULL, 
+	attempts INTEGER NOT NULL, 
+	expires_at DATETIME NOT NULL, 
+	used_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id)
+)
+
+;
+
+
+
