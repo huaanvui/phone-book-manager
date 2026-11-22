@@ -54,3 +54,11 @@ if not re.search('[A-Z]', password):
     if re.search(r'\s', password):
         errors.append('Password cannot contain spaces')
     return errors
+return errors
+def is_strong_password(password: str) -> bool:
+    return not password_errors(password)
+def normalize_email(email: str) -> str:
+    return (email or '').strip().lower()
+def normalize_phone(phone: str) -> str:
+    return re.sub(r'\D', '', phone or '')
+def normalize_name(name: str) -> str:
