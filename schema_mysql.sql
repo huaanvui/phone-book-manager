@@ -96,3 +96,13 @@ CREATE TABLE IF NOT EXISTS trash (
 )
 
 ;
+
+CREATE UNIQUE INDEX ix_users_email ON users (email);
+CREATE INDEX ix_contacts_name ON contacts (name);
+CREATE INDEX ix_contacts_user_id ON contacts (user_id);
+CREATE INDEX ix_contacts_is_deleted ON contacts (is_deleted);
+CREATE INDEX ix_groups_user_id ON `groups` (user_id);
+CREATE INDEX ix_password_resets_user_id ON password_resets (user_id);
+CREATE INDEX ix_sessions_user_id ON sessions (user_id);
+CREATE UNIQUE INDEX ix_sessions_token_hash ON sessions (token_hash);
+CREATE INDEX ix_trash_user_id ON trash (user_id);
