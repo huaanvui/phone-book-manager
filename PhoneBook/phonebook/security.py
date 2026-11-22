@@ -47,3 +47,10 @@ def password_errors(password: str) -> list:
 errors.append('Password must be at most %d characters' % MAX_PASSWORD_LENGTH)
     if not re.search('[a-z]', password):
         errors.append('Password needs a lowercase letter')
+if not re.search('[A-Z]', password):
+        errors.append('Password needs an uppercase letter')
+    if not re.search(r'\d', password):
+        errors.append('Password needs a digit')
+    if re.search(r'\s', password):
+        errors.append('Password cannot contain spaces')
+    return errors
