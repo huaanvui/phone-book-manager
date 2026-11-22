@@ -61,5 +61,16 @@ CREATE TABLE IF NOT EXISTS password_resets (
 
 ;
 
+CREATE TABLE IF NOT EXISTS sessions (
+	id INTEGER NOT NULL AUTO_INCREMENT, 
+	user_id INTEGER NOT NULL, 
+	token_hash VARCHAR(64) NOT NULL, 
+	expires_at DATETIME NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	revoked_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id)
+)
 
+;
 
