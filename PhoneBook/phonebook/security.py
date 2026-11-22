@@ -21,3 +21,8 @@ def verify_password(password: str, encoded: str) -> bool:
         return hmac.compare_digest(result, bytes.fromhex(digest))
     except (TypeError, ValueError, AttributeError):
         return False
+def needs_rehash(encoded: str) -> bool:
+    try:
+        rounds = int(encoded.split('$', 3)[1])
+    except (IndexError, ValueError, AttributeError):
+        return True
