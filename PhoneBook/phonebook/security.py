@@ -44,3 +44,6 @@ def password_errors(password: str) -> list:
     if len(password) < MIN_PASSWORD_LENGTH:
         errors.append('Password must be at least %d characters' % MIN_PASSWORD_LENGTH)
     if len(password) > MAX_PASSWORD_LENGTH:
+errors.append('Password must be at most %d characters' % MAX_PASSWORD_LENGTH)
+    if not re.search('[a-z]', password):
+        errors.append('Password needs a lowercase letter')
