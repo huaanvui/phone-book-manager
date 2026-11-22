@@ -1,5 +1,3 @@
--- Auto-generated from SQLAlchemy models.
--- First run create_database.sql to create phone_book_db.
 USE phone_book_db;
 
 
