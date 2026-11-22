@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="heading">
+  <h1>Contacts</h1>
+  <a class="button primary" href="{{ url_for('contact_form') }}">Add contact</a>
+</div>
+<nav class="tabs" aria-label="Contact views">
+  {% for key, label in [('all', 'All contacts'), ('favorites', 'Favorites'), ('trash', 'Trash')] %}
+  <a href="{{ url_for('index', view=key) }}" {% if view == key %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<div class="transfer-tools">
+  <section class="panel">
+    <h2>Import CSV / VCF</h2>
+    <form class="stack" method="post" enctype="multipart/form-data" action="{{ url_for('import_contacts') }}">
+      {% include 'csrf.html' %}
+      <label>CSV or VCF file <input type="file" name="file" accept=".csv,.vcf" required></label>
+      <small class="muted">UTF-8, up to 20 MB.</small>
+      <button class="quiet">Import</button>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>Export CSV / VCF</h2>
+    <form class="stack" method="get" action="{{ url_for('export_contacts') }}">
+      <label>Format <select name="format">
+        <option value="csv">CSV</option>
+        <option value="vcf">VCF</option>
+      </select></label>
+      <label>Contacts to export <select name="group">
+        <option value="">All contacts</option>
+        {% for group in groups %}
+        <option value="{{ group.id }}" {% if group.id == group_id %}selected{% endif %}>{{ group.name }}</option>
+        {% endfor %}
+      </select></label>
+      <button class="quiet">Download</button>
+    </form>
+  </section>
+</div>
+<form class="toolbar panel" method="get">
+  <input type="hidden" name="view" value="{{ view }}">
+  <label>Search <input type="search" name="q" value="{{ query }}" placeholder="Name, phone or email"></label>
+  {% if view != 'trash' and groups %}
+  <label>Group <select name="group">
+    <option value="">All groups</option>
+    {% for group in groups %}<option value="{{ group.id }}" {% if group.id == group_id %}selected{% endif %}>{{ group.name }}</option>{% endfor %}
+  </select></label>
+  {% endif %}
+  <label>Sort <select name="sort">
+    <option {% if order == 'A-Z' %}selected{% endif %}>A-Z</option>
+    <option {% if order == 'Z-A' %}selected{% endif %}>Z-A</option>
+  </select></label>
+  <button class="quiet">Apply</button>
+</form>
+<div class="records">
+  {% for contact in records %}
+  <article class="panel record">
+    <div>
+      <h2>{{ contact.name }}{% if contact.is_favorite %} <span class="star" aria-label="Favorite">★</span>{% endif %}</h2>
+      {% for phone in contact.phones %}<div>{{ phone }}</div>{% endfor %}
+      {% for email in contact.emails %}<div><a href="mailto:{{ email|urlencode }}">{{ email }}</a></div>{% endfor %}
+      {% if contact.address %}<div>{{ contact.address }}</div>{% endif %}
+      {% if contact.notes %}<div class="notes">{{ contact.notes }}</div>{% endif %}
+      {% if contact.groups %}<div class="muted">{{ contact.groups|map(attribute='name')|join(', ') }}</div>{% endif %}
+    </div>
+    <div class="actions">
+      {% if view == 'trash' %}
+        <form method="post" action="{{ url_for('contact_action', contact_id=contact.id, action='restore') }}">
+          {% include 'csrf.html' %}<button class="quiet">Restore</button>
+        </form>
+      {% else %}
+        <a class="button quiet" href="{{ url_for('contact_form', contact_id=contact.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('contact_action', contact_id=contact.id, action='favorite') }}">
+          {% include 'csrf.html' %}<button class="quiet">{{ 'Unfavorite' if contact.is_favorite else 'Favorite' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('contact_action', contact_id=contact.id, action='trash') }}" data-confirm="Move this contact to Trash?">
+          {% include 'csrf.html' %}<button class="quiet danger">Move to Trash</button>
+        </form>
+      {% endif %}
+    </div>
+  </article>
+  {% else %}
+  <p class="panel muted">No contacts found.</p>
+  {% endfor %}
+</div>
+{% endblock %}
