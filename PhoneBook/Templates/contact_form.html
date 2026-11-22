@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel narrow">
+  <h1>{{ 'Edit contact' if contact else 'Add contact' }}</h1>
+  {% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" class="stack">
+    {% include 'csrf.html' %}
+    <label>Name <input name="name" required value="{{ values.name }}"></label>
+    <label>Phone <input name="phone" type="tel" value="{{ values.phone }}"></label>
+    <label>Email <input name="email" value="{{ values.email }}"></label>
+    <small class="muted">Separate multiple phone numbers or emails with a semicolon.</small>
+    <label>Address <input name="address" value="{{ values.address }}"></label>
+    <label>Notes <textarea name="notes" rows="3">{{ values.notes }}</textarea></label>
+    {% if groups %}
+    <fieldset><legend>Groups</legend>
+      {% for group in groups %}
+      <label class="check"><input type="checkbox" name="groups" value="{{ group.id }}" {% if group.id in selected %}checked{% endif %}> {{ group.name }}</label>
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+    <div class="actions">
+      <button class="primary">Save contact</button>
+      <a class="button quiet" href="{{ url_for('index') }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
