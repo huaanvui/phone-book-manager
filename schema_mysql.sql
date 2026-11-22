@@ -83,3 +83,16 @@ CREATE TABLE IF NOT EXISTS contact_groups (
 )
 
 ;
+
+CREATE TABLE IF NOT EXISTS trash (
+	id INTEGER NOT NULL AUTO_INCREMENT, 
+	contact_id INTEGER NOT NULL, 
+	user_id INTEGER NOT NULL, 
+	deleted_at DATETIME NOT NULL, 
+	PRIMARY KEY (id), 
+	UNIQUE (contact_id), 
+	FOREIGN KEY(contact_id) REFERENCES contacts (id) ON DELETE CASCADE, 
+	FOREIGN KEY(user_id) REFERENCES users (id)
+)
+
+;
